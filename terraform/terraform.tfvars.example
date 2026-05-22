@@ -8,7 +8,6 @@ config_file = "config/osmh_config.json"
 # enable_source_creation = true
 
 # Optional provider authentication values. These names match TF_VAR exports in
-# /Users/aszynkow/Documents/codex_project/repos/export_tfvars.sh.
 # user_ocid        = "ocid1.user.oc1..replace_me"
 # fingerprint      = "aa:bb:cc:dd:ee:ff"
 # private_key_path = "/Users/aszynkow/.oci/oci_api_key.pem"

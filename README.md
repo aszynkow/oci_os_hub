@@ -50,28 +50,73 @@ tenancy.
 
 ## Workflow
 
-1. Export the OCI instance list to `terraform/config/instances.csv`. Use
+1. Clone the repository and enter it:
+
+```sh
+git clone https://github.com/aszynkow/oci_os_hub.git
+cd oci_os_hub
+```
+
+2. Export the OCI provider credentials so Terraform can authenticate. Use the
+   secrets store / dotfile of your choice — the stack only needs these
+   `TF_VAR_*` variables in your shell:
+
+```sh
+export TF_VAR_tenancy_ocid=ocid1.tenancy.oc1..xxxx
+export TF_VAR_user_ocid=ocid1.user.oc1..xxxx
+export TF_VAR_fingerprint=aa:bb:cc:dd:...
+export TF_VAR_private_key_path=$HOME/.oci/oci_api_key.pem
+export TF_VAR_region=ap-sydney-1
+```
+
+3. Export the OCI instance list to `terraform/config/instances.csv`. Use
    `terraform/config/template_instances.csv` as the column template if needed.
-2. Generate your local config from the tracked template:
+4. Generate your local config from the tracked template:
 
 ```sh
 cd terraform
 python3 scripts/csv_to_osmh_config.py config/instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
 ```
 
-3. Keep real values in `terraform/config/osmh_config.json` only. It is ignored
+5. Keep real values in `terraform/config/osmh_config.json` only. It is ignored
    by Git. Edit it locally if you need to adjust schedules, software sources,
    managed instance groups, or profiles.
-4. Run one Terraform state per OCI region:
+6. Set the central OSMH resource compartment (`osmh_compartment_id`). Terraform
+   blocks applies while this is a placeholder. Pick **one** of the following:
+
+   - As an environment variable (matches the other `TF_VAR_*` exports above):
+
+     ```sh
+     export TF_VAR_osmh_compartment_id=ocid1.compartment.oc1..xxxx
+     ```
+
+   - As a `terraform.tfvars` file, if you don't already have one. Copy the
+     tracked example and fill in real values:
+
+     ```sh
+     cd terraform
+     cp terraform.tfvars.example terraform.tfvars
+     # then edit terraform.tfvars and uncomment osmh_compartment_id
+     ```
+
+     `terraform.tfvars` is ignored by Git, so it is safe to keep real OCIDs in
+     it locally.
+
+   - Or pass it inline on every Terraform command:
+
+     ```sh
+     terraform apply -var='osmh_compartment_id=ocid1.compartment.oc1..xxxx' -var='region=ap-sydney-1'
+     ```
+
+7. Run one Terraform state per OCI region:
 
 ```sh
-source /Users/aszynkow/Documents/codex_project/repos/export_tfvars.sh
 cd terraform
 terraform init
-terraform plan -var='region=ap-sydney-1'
+terraform plan  -var='region=ap-sydney-1'
 terraform apply -var='region=ap-sydney-1'
 terraform apply -var='region=ap-melbourne-1' -var='enable_identity=false'
-terraform apply -var='region=ap-tokyo-1' -var='enable_identity=false'
+terraform apply -var='region=ap-tokyo-1'     -var='enable_identity=false'
 ```
 
 Use separate Resource Manager stacks, workspaces, or state backends per region.
@@ -209,7 +254,8 @@ The `profile_ids` output gives the values to use.
 
 ## Environment Variables
 
-The stack accepts these variables from your existing `export_tfvars.sh` script:
+The stack reads its OCI provider credentials from these `TF_VAR_*` environment
+variables (see the Workflow section for example `export` commands):
 
 - `TF_VAR_tenancy_ocid`
 - `TF_VAR_region`
@@ -217,8 +263,8 @@ The stack accepts these variables from your existing `export_tfvars.sh` script:
 - `TF_VAR_fingerprint`
 - `TF_VAR_private_key_path`
 
-The script also exports variables for other repos, such as Exadata, subnet, SSH,
-and admin password values. This Terraform stack ignores those.
+Any other `TF_VAR_*` values you export for unrelated stacks (Exadata, subnet,
+SSH, admin password, etc.) are ignored by this Terraform.
 
 ## Unsupported Instances From The Attachment
 
