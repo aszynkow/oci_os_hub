@@ -14,6 +14,7 @@ stack lives under `terraform/` and reads a local generated config at
 The committed template is `terraform/config/osmh_config.template.json`. Keep
 real inventory and OCIDs in the generated local file
 `terraform/config/osmh_config.json`, which is ignored by Git.
+The committed CSV shape example is `terraform/config/template_instances.csv`.
 
 Terraform now blocks applies when placeholder OCIDs remain. Pass the central
 OSMH resource compartment with `-var='osmh_compartment_id=<compartment_ocid>'`
@@ -32,6 +33,7 @@ tenancy.
 ├── README.md
 └── terraform
     ├── config/osmh_config.template.json
+    ├── config/template_instances.csv
     ├── identity.tf
     ├── locals.tf
     ├── osmh_groups.tf
@@ -48,7 +50,8 @@ tenancy.
 
 ## Workflow
 
-1. Export the OCI instance list to `terraform/config/instances.csv`.
+1. Export the OCI instance list to `terraform/config/instances.csv`. Use
+   `terraform/config/template_instances.csv` as the column template if needed.
 2. Generate your local config from the tracked template:
 
 ```sh
@@ -234,6 +237,10 @@ tracked template:
 cd terraform
 python3 scripts/csv_to_osmh_config.py config/instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
 ```
+
+The expected CSV columns are shown in
+`terraform/config/template_instances.csv`. The real `config/instances.csv`
+export is ignored by Git.
 
 This populates:
 

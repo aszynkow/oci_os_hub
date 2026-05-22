@@ -11,8 +11,8 @@ crash.*.log
 *.tfvars.json
 !*.tfvars.example
 
-# Local inventory exports
-*.csv
+# Local inventory export with real OCI inventory/OCIDs
+instances.csv
 
 # Generated local OSMH config with real OCI inventory/OCIDs
 terraform/config/osmh_config.json
