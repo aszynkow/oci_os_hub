@@ -1,0 +1,433 @@
+{
+  "metadata": {
+    "name": "oci-os-management-hub",
+    "description": "OS Management Hub template. Populate compartments and fleet.instances from a local OCI instance CSV.",
+    "generated_from": "template",
+    "notes": [
+      "Do not commit generated config/osmh_config.json when it contains real compartment or instance data.",
+      "Generate config/osmh_config.json from this template and a local CSV export.",
+      "Run this Terraform once per region using separate state or workspaces."
+    ]
+  },
+  "home_region": "ap-sydney-1",
+  "tenancy_ocid": "ocid1.tenancy.oc1..replace_me",
+  "default_freeform_tags": {
+    "managed_by": "terraform",
+    "repo": "oci_os_hub",
+    "purpose": "osmh_patch_management"
+  },
+  "compartments": {},
+  "identity": {
+    "enabled": true,
+    "dynamic_group_name": "osmh-instances",
+    "dynamic_group_description": "OCI instances allowed to register with OS Management Hub.",
+    "managed_compartment_names": [],
+    "policy_name": "osmh-policy",
+    "policy_scope": "tenancy",
+    "admin_group_name": "osmh-admins",
+    "extra_policy_statements": []
+  },
+  "osmh": {
+    "compartment_id": "ocid1.compartment.oc1..replace_osmh_resource_compartment",
+    "enable_source_creation": true,
+    "software_sources": {
+      "ol8_x86_baseos_sydney": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol8-x86-baseos-latest-sydney",
+        "description": "Oracle Linux 8 BaseOS latest x86_64 source for ap-sydney-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol8_baseos_latest-x86_64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_8"
+          ],
+          "arch_type": [
+            "X86_64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol8_x86_baseos_sydney"
+        }
+      },
+      "ol8_x86_appstream_sydney": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol8-x86-appstream-sydney",
+        "description": "Oracle Linux 8 AppStream x86_64 source for ap-sydney-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol8_appstream-x86_64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_8"
+          ],
+          "arch_type": [
+            "X86_64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol8_x86_appstream_sydney"
+        }
+      },
+      "ol9_x86_baseos_sydney": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol9-x86-baseos-latest-sydney",
+        "description": "Oracle Linux 9 BaseOS latest x86_64 source for ap-sydney-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol9_baseos_latest-x86_64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_9"
+          ],
+          "arch_type": [
+            "X86_64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol9_x86_baseos_sydney"
+        }
+      },
+      "ol9_x86_appstream_sydney": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol9-x86-appstream-sydney",
+        "description": "Oracle Linux 9 AppStream x86_64 source for ap-sydney-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol9_appstream-x86_64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_9"
+          ],
+          "arch_type": [
+            "X86_64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol9_x86_appstream_sydney"
+        }
+      },
+      "ol8_aarch64_baseos_melbourne": {
+        "enabled": true,
+        "region": "ap-melbourne-1",
+        "display_name": "ol8-aarch64-baseos-latest-melbourne",
+        "description": "Oracle Linux 8 BaseOS latest aarch64 source for ap-melbourne-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol8_baseos_latest-aarch64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_8"
+          ],
+          "arch_type": [
+            "AARCH64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol8_aarch64_baseos_melbourne"
+        }
+      },
+      "ol8_aarch64_appstream_melbourne": {
+        "enabled": true,
+        "region": "ap-melbourne-1",
+        "display_name": "ol8-aarch64-appstream-melbourne",
+        "description": "Oracle Linux 8 AppStream aarch64 source for ap-melbourne-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol8_appstream-aarch64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_8"
+          ],
+          "arch_type": [
+            "AARCH64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol8_aarch64_appstream_melbourne"
+        }
+      },
+      "ol8_x86_baseos_tokyo": {
+        "enabled": true,
+        "region": "ap-tokyo-1",
+        "display_name": "ol8-x86-baseos-latest-tokyo",
+        "description": "Oracle Linux 8 BaseOS latest x86_64 source for ap-tokyo-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol8_baseos_latest-x86_64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_8"
+          ],
+          "arch_type": [
+            "X86_64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol8_x86_baseos_tokyo"
+        }
+      },
+      "ol8_x86_appstream_tokyo": {
+        "enabled": true,
+        "region": "ap-tokyo-1",
+        "display_name": "ol8-x86-appstream-tokyo",
+        "description": "Oracle Linux 8 AppStream x86_64 source for ap-tokyo-1.",
+        "software_source_type": "VENDOR",
+        "origin_lookup": {
+          "display_name": "ol8_appstream-x86_64",
+          "software_source_type": [
+            "VENDOR"
+          ],
+          "os_family": [
+            "ORACLE_LINUX_8"
+          ],
+          "arch_type": [
+            "X86_64"
+          ],
+          "vendor_name": "ORACLE"
+        },
+        "freeform_tags": {
+          "source_key": "ol8_x86_appstream_tokyo"
+        }
+      }
+    },
+    "managed_instance_groups": {
+      "ol8_x86_sydney": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol8-x86-sydney",
+        "description": "Oracle Linux 8 x86_64 instances in ap-sydney-1.",
+        "arch_type": "X86_64",
+        "os_family": "ORACLE_LINUX_8",
+        "vendor_name": "ORACLE",
+        "location": "OCI_COMPUTE",
+        "software_source_keys": [
+          "ol8_x86_baseos_sydney",
+          "ol8_x86_appstream_sydney"
+        ],
+        "managed_instance_ids": [],
+        "freeform_tags": {
+          "patch_group": "ol8_x86_sydney"
+        }
+      },
+      "ol9_x86_sydney": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol9-x86-sydney",
+        "description": "Oracle Linux 9 x86_64 instances in ap-sydney-1.",
+        "arch_type": "X86_64",
+        "os_family": "ORACLE_LINUX_9",
+        "vendor_name": "ORACLE",
+        "location": "OCI_COMPUTE",
+        "software_source_keys": [
+          "ol9_x86_baseos_sydney",
+          "ol9_x86_appstream_sydney"
+        ],
+        "managed_instance_ids": [],
+        "freeform_tags": {
+          "patch_group": "ol9_x86_sydney"
+        }
+      },
+      "ol8_aarch64_melbourne": {
+        "enabled": true,
+        "region": "ap-melbourne-1",
+        "display_name": "ol8-aarch64-melbourne",
+        "description": "Oracle Linux 8 Arm instances in ap-melbourne-1.",
+        "arch_type": "AARCH64",
+        "os_family": "ORACLE_LINUX_8",
+        "vendor_name": "ORACLE",
+        "location": "OCI_COMPUTE",
+        "software_source_keys": [
+          "ol8_aarch64_baseos_melbourne",
+          "ol8_aarch64_appstream_melbourne"
+        ],
+        "managed_instance_ids": [],
+        "freeform_tags": {
+          "patch_group": "ol8_aarch64_melbourne"
+        }
+      },
+      "ol8_x86_tokyo": {
+        "enabled": true,
+        "region": "ap-tokyo-1",
+        "display_name": "ol8-x86-tokyo",
+        "description": "Oracle Linux 8 x86_64 instances in ap-tokyo-1.",
+        "arch_type": "X86_64",
+        "os_family": "ORACLE_LINUX_8",
+        "vendor_name": "ORACLE",
+        "location": "OCI_COMPUTE",
+        "software_source_keys": [
+          "ol8_x86_baseos_tokyo",
+          "ol8_x86_appstream_tokyo"
+        ],
+        "managed_instance_ids": [],
+        "freeform_tags": {
+          "patch_group": "ol8_x86_tokyo"
+        }
+      }
+    },
+    "profiles": {
+      "ol8_x86_sydney_profile": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol8-x86-sydney-profile",
+        "description": "Registration profile for Oracle Linux 8 x86_64 Sydney patch group.",
+        "profile_type": "GROUP",
+        "managed_instance_group_key": "ol8_x86_sydney",
+        "registration_type": "OCI_LINUX"
+      },
+      "ol9_x86_sydney_profile": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "ol9-x86-sydney-profile",
+        "description": "Registration profile for Oracle Linux 9 x86_64 Sydney patch group.",
+        "profile_type": "GROUP",
+        "managed_instance_group_key": "ol9_x86_sydney",
+        "registration_type": "OCI_LINUX"
+      },
+      "ol8_aarch64_melbourne_profile": {
+        "enabled": true,
+        "region": "ap-melbourne-1",
+        "display_name": "ol8-aarch64-melbourne-profile",
+        "description": "Registration profile for Oracle Linux 8 Arm Melbourne patch group.",
+        "profile_type": "GROUP",
+        "managed_instance_group_key": "ol8_aarch64_melbourne",
+        "registration_type": "OCI_LINUX"
+      },
+      "ol8_x86_tokyo_profile": {
+        "enabled": true,
+        "region": "ap-tokyo-1",
+        "display_name": "ol8-x86-tokyo-profile",
+        "description": "Registration profile for Oracle Linux 8 x86_64 Tokyo patch group.",
+        "profile_type": "GROUP",
+        "managed_instance_group_key": "ol8_x86_tokyo",
+        "registration_type": "OCI_LINUX"
+      }
+    },
+    "scheduled_jobs": {
+      "sydney_ol8_x86_weekly_upgrade": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "sydney-ol8-x86-weekly-dnf-upgrade",
+        "description": "Weekly all-package update for Oracle Linux 8 x86_64 Sydney instances.",
+        "schedule_type": "RECURRING",
+        "time_next_execution": "2026-06-06T16:00:00Z",
+        "recurring_rule": "FREQ=WEEKLY;INTERVAL=1;BYDAY=SA",
+        "retry_intervals": [
+          5,
+          15,
+          30
+        ],
+        "operations": [
+          {
+            "operation_type": "UPDATE_ALL"
+          }
+        ],
+        "target": {
+          "managed_instance_group_keys": [
+            "ol8_x86_sydney"
+          ]
+        }
+      },
+      "sydney_ol9_x86_weekly_upgrade": {
+        "enabled": true,
+        "region": "ap-sydney-1",
+        "display_name": "sydney-ol9-x86-weekly-dnf-upgrade",
+        "description": "Weekly all-package update for Oracle Linux 9 x86_64 Sydney instances.",
+        "schedule_type": "RECURRING",
+        "time_next_execution": "2026-06-06T16:30:00Z",
+        "recurring_rule": "FREQ=WEEKLY;INTERVAL=1;BYDAY=SA",
+        "retry_intervals": [
+          5,
+          15,
+          30
+        ],
+        "operations": [
+          {
+            "operation_type": "UPDATE_ALL"
+          }
+        ],
+        "target": {
+          "managed_instance_group_keys": [
+            "ol9_x86_sydney"
+          ]
+        }
+      },
+      "melbourne_ol8_aarch64_weekly_upgrade": {
+        "enabled": true,
+        "region": "ap-melbourne-1",
+        "display_name": "melbourne-ol8-aarch64-weekly-dnf-upgrade",
+        "description": "Weekly all-package update for Oracle Linux 8 Arm Melbourne instances.",
+        "schedule_type": "RECURRING",
+        "time_next_execution": "2026-06-06T17:00:00Z",
+        "recurring_rule": "FREQ=WEEKLY;INTERVAL=1;BYDAY=SA",
+        "retry_intervals": [
+          5,
+          15,
+          30
+        ],
+        "operations": [
+          {
+            "operation_type": "UPDATE_ALL"
+          }
+        ],
+        "target": {
+          "managed_instance_group_keys": [
+            "ol8_aarch64_melbourne"
+          ]
+        }
+      },
+      "tokyo_ol8_x86_weekly_upgrade": {
+        "enabled": true,
+        "region": "ap-tokyo-1",
+        "display_name": "tokyo-ol8-x86-weekly-dnf-upgrade",
+        "description": "Weekly all-package update for Oracle Linux 8 x86_64 Tokyo instances.",
+        "schedule_type": "RECURRING",
+        "time_next_execution": "2026-06-06T17:30:00Z",
+        "recurring_rule": "FREQ=WEEKLY;INTERVAL=1;BYDAY=SA",
+        "retry_intervals": [
+          5,
+          15,
+          30
+        ],
+        "operations": [
+          {
+            "operation_type": "UPDATE_ALL"
+          }
+        ],
+        "target": {
+          "managed_instance_group_keys": [
+            "ol8_x86_tokyo"
+          ]
+        }
+      }
+    }
+  },
+  "fleet": {
+    "instances": []
+  }
+}

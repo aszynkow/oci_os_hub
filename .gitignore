@@ -1,0 +1,35 @@
+# Terraform runtime files
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local variable files
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Local inventory exports
+*.csv
+
+# Generated local OSMH config with real OCI inventory/OCIDs
+terraform/config/osmh_config.json
+
+# Local override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI and editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python helper cache
+__pycache__/
+*.py[cod]
