@@ -29,50 +29,34 @@ tenancy.
 
 ```mermaid
 flowchart TB
-    subgraph IAM["Tenancy-level identity (created once — enable_identity = true)"]
+    subgraph IAM["Tenancy identity (created once — enable_identity = true)"]
         direction TB
-        DG["Dynamic group<br/>matches workload instance OCIDs<br/>across workload compartments"]
-        POL["IAM policy<br/>grants OSMH agent permissions<br/>to the dynamic group"]
+        DG["Dynamic group<br/>matches workload instance OCIDs"]
+        POL["IAM policy<br/>OSMH agent permissions"]
         DG --- POL
     end
 
     subgraph OSMH["OSMH resource compartment — osmh_compartment_id"]
         direction TB
-
-        subgraph SYD["ap-sydney-1 (one Terraform state)"]
-            direction TB
-            S1["Software sources<br/>(OL8 / OL9 baseos + appstream)"]
-            S2["Managed instance groups"]
-            S3["Registration profiles"]
-            S4["Scheduled jobs<br/>(weekly UPDATE_ALL)"]
-        end
-
-        subgraph MEL["ap-melbourne-1 (one Terraform state)"]
-            direction TB
-            M1["Software sources"]
-            M2["Managed instance groups"]
-            M3["Registration profiles"]
-            M4["Scheduled jobs"]
-        end
-
-        subgraph TOK["ap-tokyo-1 (one Terraform state)"]
-            direction TB
-            T1["Software sources"]
-            T2["Managed instance groups"]
-            T3["Registration profiles"]
-            T4["Scheduled jobs"]
-        end
+        SYD["<b>ap-sydney-1</b> — Terraform state #1<br/>• Software sources (OL8 / OL9)<br/>• Managed instance groups<br/>• Registration profiles<br/>• Scheduled jobs (UPDATE_ALL)"]
+        MEL["<b>ap-melbourne-1</b> — Terraform state #2<br/>• Software sources<br/>• Managed instance groups<br/>• Registration profiles<br/>• Scheduled jobs"]
+        TOK["<b>ap-tokyo-1</b> — Terraform state #3<br/>• Software sources<br/>• Managed instance groups<br/>• Registration profiles<br/>• Scheduled jobs"]
+        SYD ~~~ MEL
+        MEL ~~~ TOK
     end
 
     subgraph WL["Workload compartments (per region)"]
         direction TB
-        INST["OCI Linux instances<br/>Oracle Cloud Agent + OSMH plugin enabled<br/>tagged OsmhProfile = profile OCID"]
+        INST["OCI Linux instances<br/>Oracle Cloud Agent + OSMH plugin<br/>tagged OsmhProfile = profile OCID"]
     end
 
-    DG -. "matching rule includes these" .-> INST
-    SYD -- "registers + patches" --> INST
-    MEL -- "registers + patches" --> INST
-    TOK -- "registers + patches" --> INST
+    IAM  ~~~ OSMH
+    OSMH ~~~ WL
+
+    DG  -. "matching rule includes" .-> INST
+    SYD -- "registers + patches"     --> INST
+    MEL -- "registers + patches"     --> INST
+    TOK -- "registers + patches"     --> INST
 
     classDef compartment fill:#fff7e6,stroke:#cc7a00,color:#000;
     classDef region     fill:#e8f4ff,stroke:#0066cc,color:#000;
