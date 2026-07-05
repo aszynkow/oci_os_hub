@@ -102,6 +102,12 @@ Key points:
     ├── provider.tf
     ├── software_sources.tf
     ├── scripts/csv_to_osmh_config.py
+    ├── scripts/enrich_instances_from_oci.py
+    ├── scripts/osmh_agent_scan.py
+    ├── scripts/osmh_managed_instance_status.py
+    ├── scripts/run_osmh_jobs.py
+    ├── scripts/source_oci_profile_tfvars.sh
+    ├── scripts/transform_anz_to_instances.py
     ├── terraform.tfvars.example
     ├── variables.tf
     └── versions.tf
@@ -373,17 +379,48 @@ python3 terraform/scripts/transform_anz_to_instances.py \
   --target-csv terraform/config/apacanzset03child3_instances.csv
 ```
 
-2. Generate a tenancy-specific OSMH config from that inventory:
+2. Enrich generated names from OCI before creating the OSMH config. The
+   transform step may create aliases such as `anz-xxxx` for instances and
+   `apacanzset03child3-xxxxxx` for compartments. This helper uses the Python OCI
+   SDK and the tenancy profile to resolve the real OCI instance and compartment
+   names from OCIDs.
+
+Run it read-only first, once per region:
 
 ```sh
 cd terraform
+python3 scripts/enrich_instances_from_oci.py \
+  --csv config/apacanzset03child3_instances.csv \
+  --tenancy-name apacanzset03child3 \
+  --region ap-sydney-1 \
+  --profile apacanzset03child3
+```
+
+The output lists the CSV names beside the OCI names and shows any diffs. After
+reviewing the diffs, update the CSV in place:
+
+```sh
+python3 scripts/enrich_instances_from_oci.py \
+  --csv config/apacanzset03child3_instances.csv \
+  --tenancy-name apacanzset03child3 \
+  --region ap-sydney-1 \
+  --profile apacanzset03child3 \
+  --in-place
+```
+
+Repeat for each region in the tenancy inventory. The in-place run creates a
+backup under `terraform/config/backup/`.
+
+3. Generate a tenancy-specific OSMH config from the enriched inventory:
+
+```sh
 python3 scripts/csv_to_osmh_config.py \
   config/apacanzset03child3_instances.csv \
   --template config/osmh_config.template.json \
   --out config/apacanzset03child3_osmh_config.json
 ```
 
-3. Source the OCI profile and let the helper pick the region from
+4. Source the OCI profile and let the helper pick the region from
    `config/apacanzset03child3_instances.csv`:
 
 ```sh
@@ -406,7 +443,7 @@ source scripts/source_oci_profile_tfvars.sh \
   ocid1.compartment.oc1..xxxx
 ```
 
-4. Select or create a workspace for the region and run **plan only**:
+5. Select or create a workspace for the region and run **plan only**:
 
 ```sh
 terraform workspace new apacanzset03child3-${TF_VAR_region} 2>/dev/null || \
@@ -417,7 +454,7 @@ terraform plan
 
 Do not run `terraform apply` during this prep workflow. If
 `config/apacanzset03child3_instances.csv` contains more than one region, repeat
-the source, workspace, and plan steps once per region.
+the enrichment, source, workspace, and plan steps once per region.
 
 ## Existing Dynamic Group
 

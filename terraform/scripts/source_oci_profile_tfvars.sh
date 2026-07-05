@@ -131,7 +131,7 @@ if [[ -z "$_osmh_region" ]]; then
   return 2
 fi
 
-_osmh_compartment_id="${_osmh_compartment_id_arg:-${OSMH_COMPARTMENT_ID:-${TF_VAR_osmh_compartment_id:-$_osmh_tenancy}}}"
+_osmh_compartment_id="${_osmh_compartment_id_arg:-${OSMH_COMPARTMENT_ID:-$_osmh_tenancy}}"
 
 export OCI_CLI_PROFILE="$_osmh_profile"
 export TF_VAR_tenancy_ocid="$_osmh_tenancy"
