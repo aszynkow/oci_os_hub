@@ -25,10 +25,13 @@ resource "oci_os_management_hub_profile" "this" {
     precondition {
       condition = try(
         length(regexall("replace_", each.value.compartment_id)) == 0 &&
-        length(regexall("^ocid1\\.compartment\\.oc1\\.", each.value.compartment_id)) > 0,
+        (
+          length(regexall("^ocid1\\.compartment\\.oc1\\.", each.value.compartment_id)) > 0 ||
+          length(regexall("^ocid1\\.tenancy\\.oc1\\.", each.value.compartment_id)) > 0
+        ),
         false
       )
-      error_message = "Replace osmh.compartment_id or this profile's compartment_id with a real compartment OCID."
+      error_message = "Replace osmh.compartment_id or this profile's compartment_id with a real compartment or tenancy OCID."
     }
 
     precondition {

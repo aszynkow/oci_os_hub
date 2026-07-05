@@ -1,5 +1,7 @@
 resource "oci_identity_dynamic_group" "osmh_instances" {
-  count = local.identity_enabled ? 1 : 0
+  provider = oci.home
+
+  count = local.identity_enabled && !local.use_existing_dynamic_group ? 1 : 0
 
   compartment_id = local.tenancy_ocid
   name           = local.dynamic_group_name
@@ -25,7 +27,9 @@ resource "oci_identity_dynamic_group" "osmh_instances" {
 }
 
 resource "oci_identity_policy" "osmh" {
-  count = local.identity_enabled ? 1 : 0
+  provider = oci.home
+
+  count = local.identity_enabled && local.create_identity_policy ? 1 : 0
 
   compartment_id = local.tenancy_ocid
   name           = local.identity_policy_name

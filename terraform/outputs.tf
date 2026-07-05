@@ -23,6 +23,20 @@ output "compartment_lookup_conflicts" {
   value       = local.compartment_lookup_conflicts
 }
 
+output "identity_mode" {
+  description = "How IAM dynamic group and policy resources are handled for this run."
+  value = {
+    enabled                    = local.identity_enabled
+    use_existing_dynamic_group = local.use_existing_dynamic_group
+    existing_dynamic_group_id  = local.existing_dynamic_group_id
+    dynamic_group_name         = local.dynamic_group_name
+    create_policy              = local.create_identity_policy
+    matching_rule              = local.dynamic_group_matching_rule
+    policy_name                = local.identity_policy_name
+    policy_statements          = local.identity_policy_statements
+  }
+}
+
 output "managed_instance_group_ids" {
   description = "OS Management Hub managed instance group OCIDs created for the selected region."
   value       = { for key, group in oci_os_management_hub_managed_instance_group.this : key => group.id }

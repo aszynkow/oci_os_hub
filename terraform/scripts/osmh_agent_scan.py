@@ -47,7 +47,11 @@ def run_terraform_output(name: str) -> dict:
             "after applying the stack.\n"
             f"{result.stderr.strip() or result.stdout.strip()}"
         )
-    return json.loads(result.stdout)
+    output = json.loads(result.stdout)
+    # terraform output -json returns a wrapper with "value" key
+    if isinstance(output, dict) and "value" in output:
+        return output["value"]
+    return output
 
 
 def load_config(path: Path) -> dict:
@@ -226,13 +230,16 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    selected_region = args.region or config.get("region") or config.get("home_region")
-    profiles = run_terraform_output("profile_ids") if args.enable and args.attach_profile else {}
+    selected_region = args.region or config.get("region") or config.get("home_region") or "ap-sydney-1"
+    if args.enable and args.attach_profile:
+        profiles = run_terraform_output("profile_ids") or {}
+    else:
+        profiles = {}
 
     rows = []
     for instance in fleet_instances(config, selected_region):
         name = instance.get("display_name", "")
-        region = instance.get("region", selected_region)
+        region = instance.get("region") or selected_region
         profile_key = instance.get("osmh", {}).get("profile_key")
         instance_id = resolve_instance_id(instance)
         if not instance_id:

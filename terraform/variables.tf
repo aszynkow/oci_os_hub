@@ -10,6 +10,12 @@ variable "region" {
   default     = null
 }
 
+variable "home_region" {
+  description = "OCI tenancy home region used for IAM resources such as dynamic groups and policies."
+  type        = string
+  default     = null
+}
+
 variable "tenancy_ocid" {
   description = "Optional tenancy OCID for OCI provider authentication and JSON config override."
   type        = string

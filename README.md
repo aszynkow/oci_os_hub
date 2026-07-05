@@ -73,6 +73,11 @@ Key points:
 - **Identity is created once** (in the first region's apply with
   `enable_identity = true`). All other regional applies pass
   `enable_identity = false` so they reuse the same dynamic group and policy.
+- If a dynamic group already exists outside this Terraform state, set
+  `identity.use_existing_dynamic_group = true` and optionally
+  `identity.create_policy = false`. Terraform will not create duplicate IAM
+  resources and will output the desired matching rule for import or manual
+  update of the existing group.
 - All OSMH resources live in the **central OSMH compartment**
   (`osmh_compartment_id`). Workload **instances** stay in their own
   compartments and are pulled into the dynamic group by matching rule.
@@ -123,13 +128,13 @@ export TF_VAR_private_key_path=$HOME/.oci/oci_api_key.pem
 export TF_VAR_region=ap-sydney-1
 ```
 
-3. Export the OCI instance list to `terraform/config/instances.csv`. Use
+3. Export the OCI instance list to `terraform/config/apacanzset03_instances.csv`. Use
    `terraform/config/template_instances.csv` as the column template if needed.
 4. Generate your local config from the tracked template:
 
 ```sh
 cd terraform
-python3 scripts/csv_to_osmh_config.py config/instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
+python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
 ```
 
 5. Keep real values in `terraform/config/osmh_config.json` only. It is ignored
@@ -308,17 +313,148 @@ The `profile_ids` output gives the values to use.
 
 ## Environment Variables
 
+You can source Terraform and OCI CLI environment values from an OCI CLI profile instead of exporting them by hand:
+
+```sh
+cd terraform
+source scripts/source_oci_profile_tfvars.sh apacanzset03child3 auto config/apacanzset03child3_osmh_config.json
+terraform workspace select apacanzset03child3-ap-sydney-1
+terraform plan
+```
+
+The helper reads `~/.oci/config` or `$OCI_CONFIG_FILE`, sets
+`OCI_CLI_PROFILE` for Python/OCI CLI helpers, and exports the matching
+Terraform `TF_VAR_*` provider variables. Pass `auto` as the region to read the
+single region from `config/<profile>_instances.csv`. If that file contains
+multiple regions, source the helper once per region and pass the region
+explicitly. The profile's configured OCI region is exported as
+`TF_VAR_home_region` and is used for IAM resources such as dynamic groups and
+policies.
+
+The optional fourth argument sets the OSMH resource compartment override:
+
+```sh
+source scripts/source_oci_profile_tfvars.sh \
+  apacanzset03child3 \
+  auto \
+  config/apacanzset03child3_osmh_config.json \
+  ocid1.compartment.oc1..xxxx
+```
+
+If the fourth argument is omitted, `TF_VAR_osmh_compartment_id` defaults to the
+tenancy OCID from the OCI profile. You can also set `OSMH_COMPARTMENT_ID` or
+`TF_VAR_osmh_compartment_id` before sourcing the helper.
+
 The stack reads its OCI provider credentials from these `TF_VAR_*` environment
 variables (see the Workflow section for example `export` commands):
 
 - `TF_VAR_tenancy_ocid`
 - `TF_VAR_region`
+- `TF_VAR_home_region`
 - `TF_VAR_user_ocid`
 - `TF_VAR_fingerprint`
 - `TF_VAR_private_key_path`
+- `TF_VAR_osmh_compartment_id`
 
 Any other `TF_VAR_*` values you export for unrelated stacks (Exadata, subnet,
 SSH, admin password, etc.) are ignored by this Terraform.
+
+## Tenancy-Specific Plan-Only Workflow
+
+Use this flow when onboarding another account such as `apacanzset03child3`
+without applying Terraform or making OCI changes.
+
+1. Generate the tenancy-specific inventory from the multi-account source CSV:
+
+```sh
+python3 terraform/scripts/transform_anz_to_instances.py \
+  --source-csv anz_cloud_team_book_new.csv \
+  --account-name apacanzset03child3 \
+  --target-csv terraform/config/apacanzset03child3_instances.csv
+```
+
+2. Generate a tenancy-specific OSMH config from that inventory:
+
+```sh
+cd terraform
+python3 scripts/csv_to_osmh_config.py \
+  config/apacanzset03child3_instances.csv \
+  --template config/osmh_config.template.json \
+  --out config/apacanzset03child3_osmh_config.json
+```
+
+3. Source the OCI profile and let the helper pick the region from
+   `config/apacanzset03child3_instances.csv`:
+
+```sh
+export OCI_CONFIG_FILE=/Users/aszynkow/.oci/config
+
+source scripts/source_oci_profile_tfvars.sh \
+  apacanzset03child3 \
+  auto \
+  config/apacanzset03child3_osmh_config.json
+```
+
+To place OSMH resources in a specific compartment instead of the tenancy/root
+scope, pass that compartment OCID as the fourth argument:
+
+```sh
+source scripts/source_oci_profile_tfvars.sh \
+  apacanzset03child3 \
+  auto \
+  config/apacanzset03child3_osmh_config.json \
+  ocid1.compartment.oc1..xxxx
+```
+
+4. Select or create a workspace for the region and run **plan only**:
+
+```sh
+terraform workspace new apacanzset03child3-${TF_VAR_region} 2>/dev/null || \
+terraform workspace select apacanzset03child3-${TF_VAR_region}
+
+terraform plan
+```
+
+Do not run `terraform apply` during this prep workflow. If
+`config/apacanzset03child3_instances.csv` contains more than one region, repeat
+the source, workspace, and plan steps once per region.
+
+## Existing Dynamic Group
+
+If the tenancy already has an OSMH dynamic group and policy, avoid creating
+duplicates by setting these values in the generated config:
+
+```json
+"identity": {
+  "enabled": true,
+  "use_existing_dynamic_group": true,
+  "existing_dynamic_group_id": "ocid1.dynamicgroup.oc1..xxxx",
+  "create_policy": false,
+  "dynamic_group_name": "osmh-instances"
+}
+```
+
+With this mode, Terraform does not create
+`oci_identity_dynamic_group.osmh_instances` and does not create
+`oci_identity_policy.osmh` when `create_policy` is false. The `identity_mode`
+output shows the matching rule Terraform calculated from the fleet
+compartments:
+
+```sh
+terraform output identity_mode
+```
+
+To let Terraform update the existing dynamic group matching rule, import it
+into the current workspace/state first and leave
+`use_existing_dynamic_group = false`:
+
+```sh
+terraform import 'oci_identity_dynamic_group.osmh_instances[0]' ocid1.dynamicgroup.oc1..xxxx
+terraform plan
+```
+
+If you keep `use_existing_dynamic_group = true`, update the existing dynamic
+group outside Terraform using the `identity_mode.matching_rule` output.
 
 ## Unsupported Instances From The Attachment
 
@@ -335,11 +471,11 @@ tracked template:
 
 ```sh
 cd terraform
-python3 scripts/csv_to_osmh_config.py config/instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
+python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
 ```
 
 The expected CSV columns are shown in
-`terraform/config/template_instances.csv`. The real `config/instances.csv`
+`terraform/config/template_instances.csv`. The real `config/apacanzset03_instances.csv`
 export is ignored by Git.
 
 This populates:
@@ -352,12 +488,12 @@ with values from the CSV, including real `compartment_id` values. To refresh an
 existing local config while keeping its non-inventory settings:
 
 ```sh
-python3 scripts/csv_to_osmh_config.py config/instances.csv --merge-config config/osmh_config.json --in-place
+python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --merge-config config/osmh_config.json --in-place
 ```
 
 To generate a standalone inventory JSON file instead, omit `--template` and
 `--merge-config`:
 
 ```sh
-python3 scripts/csv_to_osmh_config.py config/instances.csv --out fleet_from_csv.json
+python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --out fleet_from_csv.json
 ```

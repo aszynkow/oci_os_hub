@@ -2,6 +2,7 @@ locals {
   config = jsondecode(file(var.config_file))
 
   provider_region     = coalesce(var.region, try(local.config.region, null), try(local.config.home_region, null), "ap-sydney-1")
+  home_region         = coalesce(var.home_region, try(local.config.home_region, null), local.provider_region)
   tenancy_ocid        = coalesce(var.tenancy_ocid, try(local.config.tenancy_ocid, null))
   osmh_compartment_id = coalesce(var.osmh_compartment_id, try(local.config.osmh.compartment_id, null))
 
@@ -75,6 +76,10 @@ locals {
   }
 
   compartments = merge(local.looked_up_compartments, local.fleet_compartments, local.configured_compartments)
+
+  use_existing_dynamic_group = try(local.identity_config.use_existing_dynamic_group, false)
+  existing_dynamic_group_id  = try(local.identity_config.existing_dynamic_group_id, null)
+  create_identity_policy     = try(local.identity_config.create_policy, true)
 
   dynamic_group_name = try(local.identity_config.dynamic_group_name, "osmh-instances")
   dynamic_group_compartment_ids = compact(distinct(concat(

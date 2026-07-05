@@ -19,6 +19,9 @@
   "compartments": {},
   "identity": {
     "enabled": true,
+    "use_existing_dynamic_group": false,
+    "existing_dynamic_group_id": "",
+    "create_policy": true,
     "dynamic_group_name": "osmh-instances",
     "dynamic_group_description": "OCI instances allowed to register with OS Management Hub.",
     "managed_compartment_names": [],

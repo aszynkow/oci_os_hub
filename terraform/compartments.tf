@@ -1,4 +1,6 @@
 data "oci_identity_compartments" "by_name" {
+  provider = oci.home
+
   for_each = local.compartment_lookup_names
 
   compartment_id            = local.tenancy_ocid
