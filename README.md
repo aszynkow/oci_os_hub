@@ -1,98 +1,148 @@
 # OCI OS Management Hub Terraform
 
-Terraform to bootstrap OCI OS Management Hub for Linux patching. The Terraform
-stack lives under `terraform/` and reads a local generated config at
-`terraform/config/osmh_config.json`. It creates:
+Terraform automation for Oracle Cloud Infrastructure OS Management Hub (OSMH) fleet patching. It turns tenancy instance inventory into regional OSMH software sources, managed instance groups, registration profiles, and scheduled patch jobs.
 
-- IAM dynamic group and policy for OSMH-managed OCI instances.
-- OS Management Hub software sources.
-- OS Management Hub managed instance groups.
-- OS Management Hub registration profiles.
-- OS Management Hub scheduled jobs, for example `UPDATE_ALL`, which is the
-  OSMH equivalent of fleet `dnf upgrade`.
+The stack is built for repeatable tenancy onboarding: one generated config per tenancy, one inventory CSV per tenancy, and one Terraform workspace/state per tenancy-region.
 
-The committed template is `terraform/config/osmh_config.template.json`. Keep
-real inventory and OCIDs in the generated local file
-`terraform/config/osmh_config.json`, which is ignored by Git.
-The committed CSV shape example is `terraform/config/template_instances.csv`.
+## What This Repository Adds
 
-Terraform now blocks applies when placeholder OCIDs remain. Pass the central
-OSMH resource compartment with `-var='osmh_compartment_id=<compartment_ocid>'`
-or `TF_VAR_osmh_compartment_id`. Workload compartment OCIDs can come from the
-CSV/fleet inventory `compartment_id` column. The CSV helper populates the
-`compartments` map, `identity.managed_compartment_names`, and `fleet.instances`
-from the CSV. If the CSV/fleet value is missing, Terraform attempts to look up
-each `identity.managed_compartment_names` entry by compartment name across the
-tenancy.
+- CSV-to-OSMH config generation from OCI instance inventory
+- Multi-tenancy inventory handling with `tenancy_instances.csv` style files
+- Region-aware split logic based on instance OCIDs and inventory fields
+- OCI SDK enrichment for real compartment names and instance display names
+- Optional IAM dynamic group and policy creation for first-run tenancies
+- Existing identity reuse mode to avoid duplicate dynamic groups or policies
+- Regional OSMH software sources, managed instance groups, profiles, and scheduled jobs
+- Agent status checks, optional agent enablement, and OSMH registration checks
+- Scheduled job run helpers and work-request checks
+
+## Companion Repo
+
+For agent-assisted onboarding and operations workflows, this repo pairs with [`agent_orchestrator`](https://github.com/aszynkow/agent_orchestrator).
+
+`oci_os_hub` remains standalone: you can generate configs, run Terraform, check agents, and run jobs directly from this repository. The orchestrator is optional and useful when you want a structured human-in-the-loop workflow for tenancy onboarding, region splitting, plan review, agent checks, scheduled jobs, and Cline/Codex verification.
+
+## Run With Agent Orchestrator
+
+Use the local orchestrator path and the OSMH onboarding skill:
+
+```sh
+python3 /Users/aszynkow/Documents/codex_project/repos/agent_orchestrator/orchestrator.py \
+  --skill oci-osmh-tenancy-onboarding \
+  run "Process tenancy apacanzset03child1 from anz_cloud_team_book_new.csv using repos/oci_os_hub. Split by region, enrich names from OCI, generate tenancy config, plan per tenancy-region workspace, reuse existing identity when present, and do not apply without approval."
+```
+
+The skill is intended to coordinate the same steps this README documents: generate a tenancy inventory, enrich OCI names, create the tenancy config, use the right Terraform workspace per region, check identity mode, plan/apply after approval, check agents, verify OSMH managed registration, and run scheduled jobs.
+
+Useful copy/paste prompts:
+
+**Full tenancy onboarding, with approval before changes**
+
+```sh
+python3 /Users/aszynkow/Documents/codex_project/repos/agent_orchestrator/orchestrator.py \
+  --skill oci-osmh-tenancy-onboarding \
+  run "For repo repos/oci_os_hub, process tenancy apacanzset03child1 from anz_cloud_team_book_new.csv. Split by real OCI region, generate terraform/config/apacanzset03child1_instances.csv, enrich compartment and instance names from OCI OCIDs read-only first, then generate terraform/config/apacanzset03child1_osmh_config.json. Use one Terraform workspace per tenancy-region named apacanzset03child1-<region>. Reuse existing identity if dynamic group and policy already exist; if they do not exist, prepare the first-run identity plan but do not apply without approval. Run terraform plan per region and show the result. Do not run terraform apply, enable agents, or run scheduled jobs until explicitly approved."
+```
+
+**Use existing identity only**
+
+```sh
+python3 /Users/aszynkow/Documents/codex_project/repos/agent_orchestrator/orchestrator.py \
+  --skill oci-osmh-tenancy-onboarding \
+  run "For repo repos/oci_os_hub, tenancy apacanzset03child1, validate and plan all configured regions using existing identity only. Do not create or modify dynamic groups or policies. Source the correct OCI profile per region, select the correct tenancy-region workspace, confirm the generated config uses existing identity mode, run terraform plan, and report any duplicate profiles, duplicate groups, missing software sources, or workspace/state mismatches."
+```
+
+**Check and enable agents after Terraform is applied**
+
+```sh
+python3 /Users/aszynkow/Documents/codex_project/repos/agent_orchestrator/orchestrator.py \
+  --skill oci-osmh-tenancy-onboarding \
+  run "For repo repos/oci_os_hub, tenancy apacanzset03child1, check OSMH agent status for all configured regions using terraform/scripts/osmh_agent_scan.py. Show the status first. If any agents are MISSING or DISABLED, enable them, then rerun the scan and show the final status per region."
+```
+
+**Run scheduled jobs only**
+
+```sh
+python3 /Users/aszynkow/Documents/codex_project/repos/agent_orchestrator/orchestrator.py \
+  --skill oci-osmh-tenancy-onboarding \
+  run "For repo repos/oci_os_hub, tenancy apacanzset03child1, only run existing scheduled OSMH jobs for the configured regions. Do not run terraform apply. Do not create or modify identity resources. Do not enable agents. Source the correct OCI profile/env per region, select the correct Terraform workspace for each tenancy-region, get existing scheduled job IDs from Terraform output/state, check for already-running work requests, then run terraform/scripts/run_osmh_jobs.py. Show final job status per region including job key, job OCID, lifecycle state, last run, next run, and any errors."
+```
+
+## Quick Start
+
+From the repository root:
+
+```sh
+cd terraform
+source scripts/source_oci_profile_tfvars.sh \
+  apacanzset03child1 \
+  ap-sydney-1 \
+  config/apacanzset03child1_osmh_config.json
+
+terraform init
+terraform workspace new apacanzset03child1-ap-sydney-1 2>/dev/null || \
+terraform workspace select apacanzset03child1-ap-sydney-1
+
+terraform plan
+```
+
+Run `terraform apply` only after reviewing the plan and confirming the tenancy identity mode is correct.
+
+## Config and State
+
+| File | Tracked | Purpose |
+| --- | --- | --- |
+| `terraform/config/osmh_config.template.json` | Yes | Safe template for generated OSMH configs |
+| `terraform/config/template_instances.csv` | Yes | Expected inventory CSV shape |
+| `terraform/config/<tenancy>_instances.csv` | No | Generated local inventory for one tenancy |
+| `terraform/config/<tenancy>_osmh_config.json` | No | Generated local OSMH config for one tenancy |
+| `terraform/config/backup/` | No | Backups created by helper scripts |
+| `terraform/terraform.tfvars` | No | Optional local Terraform variable file |
+
+Key state rules:
+
+- Use one Terraform workspace/state per tenancy-region, for example `apacanzset03child2-ap-melbourne-1`.
+- Do not switch `TF_VAR_region` inside an existing regional state unless you intend Terraform to replace region-filtered OSMH resources in that state.
+- Keep generated configs and real OCIDs out of Git unless you intentionally decide to track a sanitized example.
+- The local branch may be ahead of remote while generated tenancy files remain untracked.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph IAM["Tenancy identity (created once — enable_identity = true)"]
-        direction TB
-        DG["Dynamic group<br/>matches workload instance OCIDs"]
-        POL["IAM policy<br/>OSMH agent permissions"]
+    subgraph IAM["Tenancy identity"]
+        DG["Dynamic group"]
+        POL["IAM policy"]
         DG --- POL
     end
 
-    subgraph OSMH["OSMH resource compartment — osmh_compartment_id"]
-        direction TB
-        SYD["<b>ap-sydney-1</b> — Terraform state #1<br/>• Software sources (OL8 / OL9)<br/>• Managed instance groups<br/>• Registration profiles<br/>• Scheduled jobs (UPDATE_ALL)"]
-        MEL["<b>ap-melbourne-1</b> — Terraform state #2<br/>• Software sources<br/>• Managed instance groups<br/>• Registration profiles<br/>• Scheduled jobs"]
-        TOK["<b>ap-tokyo-1</b> — Terraform state #3<br/>• Software sources<br/>• Managed instance groups<br/>• Registration profiles<br/>• Scheduled jobs"]
-        SYD ~~~ MEL
-        MEL ~~~ TOK
+    subgraph OSMH["OSMH resource scope"]
+        SYD["ap-sydney-1 workspace/state"]
+        MEL["ap-melbourne-1 workspace/state"]
+        IAD["us-ashburn-1 workspace/state"]
     end
 
-    subgraph WL["Workload compartments (per region)"]
-        direction TB
-        INST["OCI Linux instances<br/>Oracle Cloud Agent + OSMH plugin<br/>tagged OsmhProfile = profile OCID"]
+    subgraph WL["Workload compartments"]
+        VM["OCI Linux instances<br/>Oracle Cloud Agent + OSMH plugin"]
     end
 
-    IAM  ~~~ OSMH
-    OSMH ~~~ WL
-
-    DG  -. "matching rule includes" .-> INST
-    SYD -- "registers + patches"     --> INST
-    MEL -- "registers + patches"     --> INST
-    TOK -- "registers + patches"     --> INST
-
-    classDef compartment fill:#fff7e6,stroke:#cc7a00,color:#000;
-    classDef region     fill:#e8f4ff,stroke:#0066cc,color:#000;
-    classDef identity   fill:#e8ffe8,stroke:#0a7a0a,color:#000;
-    classDef workload   fill:#f5f0ff,stroke:#5a2ca0,color:#000;
-    class OSMH compartment;
-    class SYD,MEL,TOK region;
-    class IAM identity;
-    class WL workload;
+    IAM -. "matching rule includes compartments" .-> VM
+    SYD --> VM
+    MEL --> VM
+    IAD --> VM
 ```
 
-Key points:
+Identity is either created once for a new tenancy or reused when an existing dynamic group and policy are already present. Regional OSMH resources are managed separately so each region can be planned, applied, checked, and operated independently.
 
-- **Identity is created once** (in the first region's apply with
-  `enable_identity = true`). All other regional applies pass
-  `enable_identity = false` so they reuse the same dynamic group and policy.
-- If a dynamic group already exists outside this Terraform state, set
-  `identity.use_existing_dynamic_group = true` and optionally
-  `identity.create_policy = false`. Terraform will not create duplicate IAM
-  resources and will output the desired matching rule for import or manual
-  update of the existing group.
-- All OSMH resources live in the **central OSMH compartment**
-  (`osmh_compartment_id`). Workload **instances** stay in their own
-  compartments and are pulled into the dynamic group by matching rule.
-- Each region is its own Terraform state, so adding a region is "another
-  apply" — never a `region` switch inside an existing state.
-
-## Layout
+## Repository Layout
 
 ```text
 .
 ├── LICENSE
 ├── README.md
+├── anz_cloud_team_book_new.csv              # local/untracked source inventory when present
 └── terraform
-    ├── config/osmh_config.template.json
-    ├── config/template_instances.csv
+    ├── compartments.tf
     ├── identity.tf
     ├── locals.tf
     ├── osmh_groups.tf
@@ -101,258 +151,76 @@ Key points:
     ├── outputs.tf
     ├── provider.tf
     ├── software_sources.tf
-    ├── scripts/csv_to_osmh_config.py
-    ├── scripts/enrich_instances_from_oci.py
-    ├── scripts/osmh_agent_scan.py
-    ├── scripts/osmh_managed_instance_status.py
-    ├── scripts/run_osmh_jobs.py
-    ├── scripts/source_oci_profile_tfvars.sh
-    ├── scripts/transform_anz_to_instances.py
-    ├── terraform.tfvars.example
     ├── variables.tf
-    └── versions.tf
+    ├── versions.tf
+    ├── terraform.tfvars.example
+    ├── config/
+    │   ├── osmh_config.template.json
+    │   └── template_instances.csv
+    └── scripts/
+        ├── csv_to_osmh_config.py
+        ├── enrich_instances_from_oci.py
+        ├── osmh_agent_scan.py
+        ├── osmh_managed_instance_status.py
+        ├── run_osmh_jobs.py
+        ├── source_oci_profile_tfvars.sh
+        └── transform_anz_to_instances.py
 ```
 
-## Workflow
+## Tenancy Onboarding Workflow
 
-1. Clone the repository and enter it:
+1. Generate a tenancy-specific inventory from the multi-account CSV:
 
 ```sh
-git clone https://github.com/aszynkow/oci_os_hub.git
-cd oci_os_hub
+python3 terraform/scripts/transform_anz_to_instances.py \
+  --source-csv anz_cloud_team_book_new.csv \
+  --account-name apacanzset03child1 \
+  --target-csv terraform/config/apacanzset03child1_instances.csv
 ```
 
-2. Export the OCI provider credentials so Terraform can authenticate. Use the
-   secrets store / dotfile of your choice — the stack only needs these
-   `TF_VAR_*` variables in your shell:
-
-```sh
-export TF_VAR_tenancy_ocid=ocid1.tenancy.oc1..xxxx
-export TF_VAR_user_ocid=ocid1.user.oc1..xxxx
-export TF_VAR_fingerprint=aa:bb:cc:dd:...
-export TF_VAR_private_key_path=$HOME/.oci/oci_api_key.pem
-export TF_VAR_region=ap-sydney-1
-```
-
-3. Export the OCI instance list to `terraform/config/apacanzset03_instances.csv`. Use
-   `terraform/config/template_instances.csv` as the column template if needed.
-4. Generate your local config from the tracked template:
-
-```sh
-cd terraform
-python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
-```
-
-5. Keep real values in `terraform/config/osmh_config.json` only. It is ignored
-   by Git. Edit it locally if you need to adjust schedules, software sources,
-   managed instance groups, or profiles.
-6. Set the central OSMH resource compartment (`osmh_compartment_id`). Terraform
-   blocks applies while this is a placeholder. Pick **one** of the following:
-
-   - As an environment variable (matches the other `TF_VAR_*` exports above):
-
-     ```sh
-     export TF_VAR_osmh_compartment_id=ocid1.compartment.oc1..xxxx
-     ```
-
-   - As a `terraform.tfvars` file, if you don't already have one. Copy the
-     tracked example and fill in real values:
-
-     ```sh
-     cd terraform
-     cp terraform.tfvars.example terraform.tfvars
-     # then edit terraform.tfvars and uncomment osmh_compartment_id
-     ```
-
-     `terraform.tfvars` is ignored by Git, so it is safe to keep real OCIDs in
-     it locally.
-
-   - Or pass it inline on every Terraform command:
-
-     ```sh
-     terraform apply -var='osmh_compartment_id=ocid1.compartment.oc1..xxxx' -var='region=ap-sydney-1'
-     ```
-
-7. Run one Terraform state per OCI region:
+2. Enrich generated names from OCI. Run read-only first for each region:
 
 ```sh
 cd terraform
-terraform init
-terraform plan  -var='region=ap-sydney-1'
-terraform apply -var='region=ap-sydney-1'
-terraform apply -var='region=ap-melbourne-1' -var='enable_identity=false'
-terraform apply -var='region=ap-tokyo-1'     -var='enable_identity=false'
+python3 scripts/enrich_instances_from_oci.py \
+  --csv config/apacanzset03child1_instances.csv \
+  --tenancy-name apacanzset03child1 \
+  --region ap-sydney-1 \
+  --profile apacanzset03child1
 ```
 
-Use separate Resource Manager stacks, workspaces, or state backends per region.
-Do not switch `region` inside the same state unless you intend Terraform to
-replace the region-filtered OSMH resources in that state.
-
-## Software Sources
-
-By default, the stack uses `osmh.software_sources` in
-`terraform/config/osmh_config.json` to resolve source IDs:
-
-```hcl
-enable_source_creation = true
-```
-
-Entries with `software_source_type = "VENDOR"` are Oracle-provided sources, so
-Terraform looks them up and attaches their IDs. Non-vendor entries are created
-when source creation is enabled.
-
-For vendor sources, Terraform also asserts `availability_at_oci = "SELECTED"`
-before creating managed instance groups. This handles regions where the vendor
-source exists but has not yet been selected for the tenancy.
-
-Each managed instance group uses `software_source_keys` to reference those
-sources. For example, the Sydney Oracle Linux 8 group references:
-
-```json
-"software_source_keys": [
-  "ol8_x86_baseos_sydney",
-  "ol8_x86_appstream_sydney"
-]
-```
-
-If software sources already exist and you only want Terraform to look them up,
-set:
-
-```hcl
-enable_source_creation = false
-```
-
-In lookup mode, Terraform uses each source's `lookup` block if present, or falls
-back to the source `display_name`, `compartment_id`, and `software_source_type`.
-
-## Running Scheduled Jobs
-
-After Terraform creates the scheduled jobs, trigger all jobs for the selected
-region with:
+After reviewing the proposed name changes, update the CSV in place:
 
 ```sh
-cd terraform
-python3 scripts/run_osmh_jobs.py --region ap-sydney-1
+python3 scripts/enrich_instances_from_oci.py \
+  --csv config/apacanzset03child1_instances.csv \
+  --tenancy-name apacanzset03child1 \
+  --region ap-sydney-1 \
+  --profile apacanzset03child1 \
+  --in-place
 ```
 
-Preview the jobs without running them:
+Repeat enrichment for every region in the tenancy inventory.
+
+3. Generate the tenancy-specific OSMH config:
 
 ```sh
-python3 scripts/run_osmh_jobs.py --region ap-sydney-1 --dry-run
+python3 scripts/csv_to_osmh_config.py \
+  config/apacanzset03child1_instances.csv \
+  --template config/osmh_config.template.json \
+  --out config/apacanzset03child1_osmh_config.json
 ```
 
-Run one job by Terraform output key:
-
-```sh
-python3 scripts/run_osmh_jobs.py --region ap-sydney-1 --job-key sydney_ol8_x86_weekly_upgrade
-```
-
-Check for currently running OSMH work requests across all compartments in
-`config/osmh_config.json`:
-
-```sh
-python3 scripts/run_osmh_jobs.py --region ap-sydney-1 --list-running
-```
-
-## Partial Apply Recovery
-
-If an early apply created IAM resources before failing on OSMH resources, do not
-delete the state. Replace the placeholder compartment IDs, then run apply again.
-Terraform will update the dynamic group matching rule and continue creating the
-OSMH resources.
-
-Check what was created:
-
-```sh
-cd terraform
-terraform state list
-```
-
-At minimum, these values must be real OCIDs before apply:
-
-- `osmh.compartment_id`, `TF_VAR_osmh_compartment_id`, or
-  `-var='osmh_compartment_id=<compartment_ocid>'`
-- every fleet `compartment_id` used to build the dynamic group matching rule
-
-The top-level `compartments` map is optional when `fleet.instances` contains
-real `compartment_name` and `compartment_id` values from the CSV. If both the
-top-level map and fleet IDs are missing, Terraform will try an OCI compartment
-lookup by name. If names are duplicated in the tenancy, provide the exact OCID
-in `compartments` or in the fleet CSV.
-
-## Existing Instances
-
-For existing OCI instances:
-
-1. Confirm Oracle Cloud Agent is installed and at least version `1.40`.
-2. Enable the `OS Management Hub Agent` plugin.
-3. Select the matching profile created by this Terraform.
-
-You can scan the JSON fleet and optionally enable the plugin with:
-
-```sh
-cd terraform
-python3 scripts/osmh_agent_scan.py --region ap-sydney-1
-```
-
-The scan reads `config/osmh_config.json`, resolves missing compute instance
-OCIDs by `display_name` and `compartment_id`, and reports the Oracle Cloud
-Agent plugin state. To attach the matching Terraform-created OSMH profile and
-enable the plugin where needed:
-
-```sh
-cd terraform
-python3 scripts/osmh_agent_scan.py --region ap-sydney-1 --enable
-```
-
-After enabling, wait a few minutes and rerun the scan. Registered instances
-should then appear in OS Management Hub and in the target managed instance
-groups.
-
-For new instances, OCI also supports assigning a profile with the free-form tag:
-
-```text
-OsmhProfile = <profile_ocid>
-```
-
-The `profile_ids` output gives the values to use.
-
-## Environment Variables
-
-You can source Terraform and OCI CLI environment values from an OCI CLI profile instead of exporting them by hand:
-
-```sh
-cd terraform
-source scripts/source_oci_profile_tfvars.sh apacanzset03child3 auto config/apacanzset03child3_osmh_config.json
-terraform workspace select apacanzset03child3-ap-sydney-1
-terraform plan
-```
-
-The helper reads `~/.oci/config` or `$OCI_CONFIG_FILE`, sets
-`OCI_CLI_PROFILE` for Python/OCI CLI helpers, and exports the matching
-Terraform `TF_VAR_*` provider variables. Pass `auto` as the region to read the
-single region from `config/<profile>_instances.csv`. If that file contains
-multiple regions, source the helper once per region and pass the region
-explicitly. The profile's configured OCI region is exported as
-`TF_VAR_home_region` and is used for IAM resources such as dynamic groups and
-policies.
-
-The optional fourth argument sets the OSMH resource compartment override:
+4. Source the OCI profile and Terraform variables for one region:
 
 ```sh
 source scripts/source_oci_profile_tfvars.sh \
-  apacanzset03child3 \
-  auto \
-  config/apacanzset03child3_osmh_config.json \
-  ocid1.compartment.oc1..xxxx
+  apacanzset03child1 \
+  ap-sydney-1 \
+  config/apacanzset03child1_osmh_config.json
 ```
 
-If the fourth argument is omitted, `TF_VAR_osmh_compartment_id` defaults to the
-tenancy OCID from the OCI profile. You can also set `OSMH_COMPARTMENT_ID` or
-`TF_VAR_osmh_compartment_id` before sourcing the helper.
-
-The stack reads its OCI provider credentials from these `TF_VAR_*` environment
-variables (see the Workflow section for example `export` commands):
+The helper reads `~/.oci/config` or `$OCI_CONFIG_FILE`, sets `OCI_CLI_PROFILE`, and exports the provider variables Terraform needs:
 
 - `TF_VAR_tenancy_ocid`
 - `TF_VAR_region`
@@ -360,106 +228,50 @@ variables (see the Workflow section for example `export` commands):
 - `TF_VAR_user_ocid`
 - `TF_VAR_fingerprint`
 - `TF_VAR_private_key_path`
+- `TF_VAR_config_file`
 - `TF_VAR_osmh_compartment_id`
 
-Any other `TF_VAR_*` values you export for unrelated stacks (Exadata, subnet,
-SSH, admin password, etc.) are ignored by this Terraform.
-
-## Tenancy-Specific Plan-Only Workflow
-
-Use this flow when onboarding another account such as `apacanzset03child3`
-without applying Terraform or making OCI changes.
-
-1. Generate the tenancy-specific inventory from the multi-account source CSV:
-
-```sh
-python3 terraform/scripts/transform_anz_to_instances.py \
-  --source-csv anz_cloud_team_book_new.csv \
-  --account-name apacanzset03child3 \
-  --target-csv terraform/config/apacanzset03child3_instances.csv
-```
-
-2. Enrich generated names from OCI before creating the OSMH config. The
-   transform step may create aliases such as `anz-xxxx` for instances and
-   `apacanzset03child3-xxxxxx` for compartments. This helper uses the Python OCI
-   SDK and the tenancy profile to resolve the real OCI instance and compartment
-   names from OCIDs.
-
-Run it read-only first, once per region:
-
-```sh
-cd terraform
-python3 scripts/enrich_instances_from_oci.py \
-  --csv config/apacanzset03child3_instances.csv \
-  --tenancy-name apacanzset03child3 \
-  --region ap-sydney-1 \
-  --profile apacanzset03child3
-```
-
-The output lists the CSV names beside the OCI names and shows any diffs. After
-reviewing the diffs, update the CSV in place:
-
-```sh
-python3 scripts/enrich_instances_from_oci.py \
-  --csv config/apacanzset03child3_instances.csv \
-  --tenancy-name apacanzset03child3 \
-  --region ap-sydney-1 \
-  --profile apacanzset03child3 \
-  --in-place
-```
-
-Repeat for each region in the tenancy inventory. The in-place run creates a
-backup under `terraform/config/backup/`.
-
-3. Generate a tenancy-specific OSMH config from the enriched inventory:
-
-```sh
-python3 scripts/csv_to_osmh_config.py \
-  config/apacanzset03child3_instances.csv \
-  --template config/osmh_config.template.json \
-  --out config/apacanzset03child3_osmh_config.json
-```
-
-4. Source the OCI profile and let the helper pick the region from
-   `config/apacanzset03child3_instances.csv`:
-
-```sh
-export OCI_CONFIG_FILE=/Users/aszynkow/.oci/config
-
-source scripts/source_oci_profile_tfvars.sh \
-  apacanzset03child3 \
-  auto \
-  config/apacanzset03child3_osmh_config.json
-```
-
-To place OSMH resources in a specific compartment instead of the tenancy/root
-scope, pass that compartment OCID as the fourth argument:
+Pass a fourth argument to override the OSMH resource compartment:
 
 ```sh
 source scripts/source_oci_profile_tfvars.sh \
-  apacanzset03child3 \
-  auto \
-  config/apacanzset03child3_osmh_config.json \
+  apacanzset03child1 \
+  ap-sydney-1 \
+  config/apacanzset03child1_osmh_config.json \
   ocid1.compartment.oc1..xxxx
 ```
 
-5. Select or create a workspace for the region and run **plan only**:
+5. Select the tenancy-region workspace and plan:
 
 ```sh
-terraform workspace new apacanzset03child3-${TF_VAR_region} 2>/dev/null || \
-terraform workspace select apacanzset03child3-${TF_VAR_region}
+terraform workspace new apacanzset03child1-${TF_VAR_region} 2>/dev/null || \
+terraform workspace select apacanzset03child1-${TF_VAR_region}
 
 terraform plan
 ```
 
-Do not run `terraform apply` during this prep workflow. If
-`config/apacanzset03child3_instances.csv` contains more than one region, repeat
-the enrichment, source, workspace, and plan steps once per region.
+6. Apply only after the plan is clean and identity handling is confirmed:
 
-## Existing Dynamic Group
+```sh
+terraform apply
+```
 
-If the tenancy already has an OSMH dynamic group and policy, avoid creating
-duplicates by setting these values in the generated config:
+Repeat source, workspace, plan, and apply for each region in the tenancy inventory.
+
+## Identity Mode
+
+For a first run in a tenancy, Terraform can create the OSMH dynamic group and policy:
+
+```json
+"identity": {
+  "enabled": true,
+  "use_existing_dynamic_group": false,
+  "create_policy": true,
+  "dynamic_group_name": "osmh-instances"
+}
+```
+
+For later regions, or for a tenancy where identity already exists, reuse identity instead of creating duplicates:
 
 ```json
 "identity": {
@@ -471,66 +283,152 @@ duplicates by setting these values in the generated config:
 }
 ```
 
-With this mode, Terraform does not create
-`oci_identity_dynamic_group.osmh_instances` and does not create
-`oci_identity_policy.osmh` when `create_policy` is false. The `identity_mode`
-output shows the matching rule Terraform calculated from the fleet
-compartments:
+With existing identity mode, Terraform does not create `oci_identity_dynamic_group.osmh_instances` and does not create `oci_identity_policy.osmh` when `create_policy` is false. Use this output to inspect the matching rule Terraform calculated:
 
 ```sh
 terraform output identity_mode
 ```
 
-To let Terraform update the existing dynamic group matching rule, import it
-into the current workspace/state first and leave
-`use_existing_dynamic_group = false`:
+If Terraform should manage an existing dynamic group, import it into the correct workspace first and leave `use_existing_dynamic_group = false`:
 
 ```sh
 terraform import 'oci_identity_dynamic_group.osmh_instances[0]' ocid1.dynamicgroup.oc1..xxxx
 terraform plan
 ```
 
-If you keep `use_existing_dynamic_group = true`, update the existing dynamic
-group outside Terraform using the `identity_mode.matching_rule` output.
+## Software Sources, Groups, Profiles, and Jobs
 
-## Unsupported Instances From The Attachment
+The generated config defines `osmh.software_sources`, managed instance groups, registration profiles, and scheduled jobs. Managed instance groups reference software sources by key, for example:
 
-The config marks unsupported or special cases in `fleet.instances[*].osmh`:
+```json
+"software_source_keys": [
+  "ol8_x86_baseos_sydney",
+  "ol8_x86_appstream_sydney"
+]
+```
 
-- `k8sworker2` is Rocky Linux 8. Use Ansible or OCI Run Command for that host.
-- `ragllm` is Oracle Autonomous Linux. Treat it separately from standard OSMH
-  groups unless you intentionally configure Autonomous Linux resources.
+Terraform validates that every group `software_source_keys` entry exists in `osmh.software_sources`. If a plan fails with an empty `local.software_source_ids_by_key`, check that the generated config contains software sources for the selected region and that the workspace is using the correct `TF_VAR_config_file`.
 
-## CSV Conversion Helper
+Vendor sources are looked up from OCI. Custom sources can be created when source creation is enabled:
 
-If you export the OCI instance list as CSV, generate the local config from the
-tracked template:
+```hcl
+enable_source_creation = true
+```
+
+Set this to false when all software sources already exist and should only be looked up:
+
+```hcl
+enable_source_creation = false
+```
+
+## Agent Checks
+
+Check Oracle Cloud Agent OSMH plugin status for the selected region:
 
 ```sh
 cd terraform
-python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --template config/osmh_config.template.json --out config/osmh_config.json
+source scripts/source_oci_profile_tfvars.sh \
+  apacanzset03child1 \
+  ap-sydney-1 \
+  config/apacanzset03child1_osmh_config.json
+
+python3 scripts/osmh_agent_scan.py \
+  --config config/apacanzset03child1_osmh_config.json \
+  --region ap-sydney-1
 ```
 
-The expected CSV columns are shown in
-`terraform/config/template_instances.csv`. The real `config/apacanzset03_instances.csv`
-export is ignored by Git.
-
-This populates:
-
-- `compartments`
-- `identity.managed_compartment_names`
-- `fleet.instances`
-
-with values from the CSV, including real `compartment_id` values. To refresh an
-existing local config while keeping its non-inventory settings:
+Enable missing or disabled OSMH plugins only when you are ready to change OCI instances:
 
 ```sh
-python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --merge-config config/osmh_config.json --in-place
+python3 scripts/osmh_agent_scan.py \
+  --config config/apacanzset03child1_osmh_config.json \
+  --region ap-sydney-1 \
+  --enable
 ```
 
-To generate a standalone inventory JSON file instead, omit `--template` and
-`--merge-config`:
+Check which instances OSMH actually sees as managed:
 
 ```sh
-python3 scripts/csv_to_osmh_config.py config/apacanzset03_instances.csv --out fleet_from_csv.json
+python3 scripts/osmh_managed_instance_status.py \
+  --config config/apacanzset03child1_osmh_config.json \
+  --region ap-sydney-1 \
+  --show-extra
 ```
+
+## Scheduled Jobs
+
+Preview scheduled jobs from Terraform output without running them:
+
+```sh
+python3 scripts/run_osmh_jobs.py --region ap-sydney-1 --dry-run
+```
+
+Check for currently running OSMH work requests across configured compartments:
+
+```sh
+python3 scripts/run_osmh_jobs.py \
+  --config config/apacanzset03child1_osmh_config.json \
+  --region ap-sydney-1 \
+  --list-running
+```
+
+Run all scheduled jobs for the selected region:
+
+```sh
+python3 scripts/run_osmh_jobs.py \
+  --config config/apacanzset03child1_osmh_config.json \
+  --region ap-sydney-1
+```
+
+Run a single job by Terraform output key:
+
+```sh
+python3 scripts/run_osmh_jobs.py \
+  --region ap-sydney-1 \
+  --job-key sydney_ol8_x86_weekly_upgrade
+```
+
+## Common Commands
+
+```sh
+# Generate inventory for one tenancy
+python3 terraform/scripts/transform_anz_to_instances.py --source-csv anz_cloud_team_book_new.csv --account-name apacanzset03child1 --target-csv terraform/config/apacanzset03child1_instances.csv
+
+# Generate config from inventory
+cd terraform
+python3 scripts/csv_to_osmh_config.py config/apacanzset03child1_instances.csv --template config/osmh_config.template.json --out config/apacanzset03child1_osmh_config.json
+
+# Source OCI profile and Terraform vars
+source scripts/source_oci_profile_tfvars.sh apacanzset03child1 ap-sydney-1 config/apacanzset03child1_osmh_config.json
+
+# Workspace and plan
+terraform workspace new apacanzset03child1-ap-sydney-1 2>/dev/null || terraform workspace select apacanzset03child1-ap-sydney-1
+terraform plan
+
+# Agent and registration checks
+python3 scripts/osmh_agent_scan.py --config config/apacanzset03child1_osmh_config.json --region ap-sydney-1
+python3 scripts/osmh_managed_instance_status.py --config config/apacanzset03child1_osmh_config.json --region ap-sydney-1 --show-extra
+
+# Scheduled job checks
+python3 scripts/run_osmh_jobs.py --config config/apacanzset03child1_osmh_config.json --region ap-sydney-1 --list-running
+python3 scripts/run_osmh_jobs.py --config config/apacanzset03child1_osmh_config.json --region ap-sydney-1 --dry-run
+```
+
+## Troubleshooting
+
+- If Terraform wants to recreate regional resources, confirm you selected the correct tenancy-region workspace and sourced the correct `TF_VAR_region` and `TF_VAR_config_file`.
+- If profile or managed group names already exist, import the existing resources or use the correct existing workspace/state instead of creating a new stack.
+- If dynamic group quota is reached, reuse or import the existing OSMH dynamic group rather than creating another one.
+- If agents show `NO_INSTANCE_ID`, regenerate or enrich the tenancy CSV so `instance_id` values are present.
+- If jobs are not found from Terraform output, confirm the workspace is the one that created those jobs. You can also list scheduled jobs directly in OCI by region/compartment to verify last execution times.
+- If OCI CLI warns that an API key is missing the `OCI_API_KEY` label, append `OCI_API_KEY` as the final line of the private key file and keep permissions at `600`.
+
+## Credits
+
+This repository contains OCI OS Management Hub Terraform automation and operational helpers by **Adam Szynkowski** ([@aszynkow](https://github.com/aszynkow)).
+
+Release notes for the Terraform automation are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+This project follows the license in [LICENSE](LICENSE).
